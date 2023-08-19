@@ -7,6 +7,7 @@
 var app = require('../app');
 var debug = require('debug')('cherrypick:server');
 var http = require('http');
+const { io } = require('../services/sockets');
 
 /**
  * Get port from environment and store in Express.
@@ -20,6 +21,11 @@ app.set('port', port);
  */
 
 var server = http.createServer(app);
+
+/**
+ * Attach websocket server to http server.
+ */
+io.attach(server);
 
 /**
  * Listen on provided port, on all network interfaces.
