@@ -5,7 +5,9 @@ var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 const mongoose = require('mongoose');
 
-mongoose.connect('mongodb+srv://rlin:Hackthe6ix@cluster0.wpqlfvs.mongodb.net/?retryWrites=true&w=majority');
+require('dotenv').config();
+
+mongoose.connect(process.env.MONGO_URL);
 var app = express();
 
 app.use(logger('dev'));
