@@ -27,6 +27,14 @@ async function everyoneVoted(electionId) {
     return room != undefined && all_votes.length === room.size;
 }
 
+function getNumVotes(electionId) {
+    return Vote.find({ election: electionId }).count();
+}
+
+function getNumParticipants(electionId) {
+    return io.sockets.adapter.room.get(electionId).size;
+}
+
 async function endRound(socket, electionId) {
     let all_votes = await Vote.find({ election: electionId });
     let winner = determineWinner(all_votes);
@@ -62,18 +70,21 @@ io.on('connection', async (socket) => {
         let update = { option };
         let options = { upsert: true };
         await Vote.findOneAndUpdate(filter, update, options);
+
+        let num_votes = getNumVotes(electionId);
+        let num_participants = getNumParticipants(electionId);
+        
+        socket.emit("num_votes", num_votes);
+        socket.emit("num_participants", num_participants);
+
         let roundEnded = await everyoneVoted(socket, electionId);
         if (roundEnded) {
             await endRound(socket, electionId);
         }
     });
     socket.on('disconnecting', async () => {
-        console.log('disconnecting');
-        console.log(socket.rooms.size);
         for (let electionId in socket.rooms) {
-            console.log(io.sockets.adapter.rooms.get(electionId)?.size);
             if (io.sockets.adapter.rooms.get(electionId)?.size === 1) {
-                console.log(io.sockets.adapter.rooms.get(electionId).size);
                 await Election.findByIdAndDelete(electionId);
             }
         }
@@ -81,7 +92,6 @@ io.on('connection', async (socket) => {
     });
     socket.on('disconnect', async () => {
         let elections = await Election.find({});
-        console.log(elections);
         for (let election in elections) {
             let everyoneVotes = await everyoneVoted(election._id);
             if (everyoneVotes) {
