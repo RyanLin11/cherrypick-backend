@@ -35,15 +35,14 @@ function getNumParticipants(electionId) {
     return io.sockets.adapter.room.get(electionId).size;
 }
 
-async function endRound(socket, electionId) {
+async function endRound(electionId) {
     let all_votes = await Vote.find({ election: electionId });
     let winner = determineWinner(all_votes);
     let election = await Election.findById(electionId);
     election.options.shift();
     election.options.shift();
     election.options.push(winner);
-    election.options.save();
-    socket.emit("results", { results: election.options });
+    await election.save();
 }
 
 io.on('connection', async (socket) => {
@@ -51,37 +50,54 @@ io.on('connection', async (socket) => {
         let election = await Election.findOne({ code });
         if (election) {
             socket.join(election._id);
+            socket.emit("joined", {
+                id: election._id,
+                code: code,
+                num_participants: getNumParticipants(election._id) 
+            });
         } else {
             socket.emit("error", { message: "room does not exist" });
         }
     });
+    // triggered on create group
     socket.on('create-group', async ({ code, restaurants }) => {
         let election = await Election.findOne({ code });
         if (election == null) {
             election = new Election({ code, admin: socket.id, options: restaurants });
             await election.save();
             socket.join(election._id);
+            socket.emit("joined", {
+                id: election._id,
+                code: code,
+                num_participants: getNumParticipants(election._id) 
+            });
         } else {
             socket.emit("error", { message: "room code already in use" });
         }
     });
+    // triggered on vote
     socket.on('vote', async ({ electionId, option }) => {
         let filter = { election: electionId, voter: socket.id };
         let update = { option };
         let options = { upsert: true };
         await Vote.findOneAndUpdate(filter, update, options);
-
-        let num_votes = getNumVotes(electionId);
-        let num_participants = getNumParticipants(electionId);
-        
-        socket.emit("num_votes", num_votes);
-        socket.emit("num_participants", num_participants);
-
         let roundEnded = await everyoneVoted(socket, electionId);
         if (roundEnded) {
-            await endRound(socket, electionId);
+            await endRound(electionId);
         }
+        // construct result
+        let election = await Election.findById(electionId);
+        let votes = await getNumVotes(election._id);
+        socket.emit("update", {
+            id: election._id,
+            option1: election.options.length > 1? election.options[0] : "",
+            option2: election.options.length > 1? election.options[1] : "",
+            num_votes: votes,
+            num_participants: getNumParticipants(electionId),
+            last_winner: roundEnded? election.options[election.options.length - 1] : ""
+        });
     });
+
     socket.on('disconnecting', async () => {
         for (let electionId in socket.rooms) {
             if (io.sockets.adapter.rooms.get(electionId)?.size === 1) {
