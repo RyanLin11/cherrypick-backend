@@ -1,9 +1,7 @@
 import mongoose from 'mongoose';
 import Vote from './vote.js';
 import User from './user.js';
-
 const { ObjectId } = mongoose.Schema.Types;
-
 const ElectionSchema = new mongoose.Schema({
     code: {
         type: String,
@@ -26,7 +24,5 @@ const ElectionSchema = new mongoose.Schema({
         required: true,
     },
 });
-
 const Election = mongoose.model("Election", ElectionSchema);
-
 export default Election;

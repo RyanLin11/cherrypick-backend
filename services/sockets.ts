@@ -1,9 +1,9 @@
 import { ModifyResult } from "mongoose";
 import mongoose from "mongoose";
 import { Server, Socket } from "socket.io";
-import Election from '../models/election';
-import Vote from '../models/vote';
-import User from "../models/user";
+import Election from '../models/election.js';
+import Vote from '../models/vote.js';
+import User from "../models/user.js";
 
 type ObjectId = mongoose.Types.ObjectId;
 
@@ -36,7 +36,6 @@ interface Election {
 
 const io = new Server();
 const api = { io };
-
 
 function getWinner(votes: Vote[]): string {
     const optionToVoteCount = votes.reduce((map, vote) => {
@@ -143,4 +142,4 @@ io.on('connection', async (socket: Socket) => {
     });
 });
 
-module.exports = api;
+export default api;

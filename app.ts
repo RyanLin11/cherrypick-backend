@@ -1,12 +1,12 @@
-import { Request, Response, NextFunction, Errback } from "express";
+import { Request, Response, NextFunction } from "express";
 import createError from 'http-errors';
 import express from 'express';
-import path from 'path';
 import cookieParser from 'cookie-parser';
 import logger from 'morgan';
 import mongoose from 'mongoose';
+import dotenv from 'dotenv';
 
-require('dotenv').config();
+dotenv.config();
 
 if (process.env.MONGO_URL) {
   mongoose.connect(process.env.MONGO_URL);
@@ -18,7 +18,6 @@ app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
 
 // catch 404 and forward to error handler
 app.use((req: Request, res: Response, next: NextFunction) => {
@@ -36,4 +35,4 @@ app.use((err: any, req: Request, res: Response, next: NextFunction) => {
   res.render('error');
 });
 
-module.exports = app;
+export default app;

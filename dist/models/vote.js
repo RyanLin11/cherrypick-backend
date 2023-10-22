@@ -1,8 +1,6 @@
 import mongoose from 'mongoose';
 import User from './user.js';
-
 const { ObjectId } = mongoose.Schema.Types;
-
 const VoteSchema = new mongoose.Schema({
     voter: {
         type: ObjectId,
@@ -14,7 +12,5 @@ const VoteSchema = new mongoose.Schema({
         required: true
     }
 });
-
 const Vote = mongoose.model("Vote", VoteSchema);
-
 export default Vote;
