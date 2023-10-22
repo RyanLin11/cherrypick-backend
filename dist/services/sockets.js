@@ -123,25 +123,21 @@ io.on('connection', (socket) => __awaiter(void 0, void 0, void 0, function* () {
         });
         const votes = yield Vote.find({ voter: user._id });
         yield Vote.deleteMany({ voter: user._id });
-        console.log([...socket.rooms]);
         yield Promise.all(rooms.map((room) => __awaiter(void 0, void 0, void 0, function* () {
             if (isValidObjectId(room)) {
                 const election = yield Election.findById(room);
-                console.log(election);
                 if (election) {
                     // remove all votes related to this person
                     election.votes = election.votes.filter(vote => !votes.find(v => v._id === vote));
                     yield election.save();
                     // delete election if that was the last person
-                    console.log('id: ' + election._id);
-                    console.log('room: ' + room);
-                    console.log(roomToSize.get(room));
                     if (roomToSize.get(room) === 1) {
                         yield Election.findByIdAndDelete(election._id);
                     }
                 }
             }
         })));
+        yield User.findByIdAndDelete(user._id);
     }));
 }));
 export default api;

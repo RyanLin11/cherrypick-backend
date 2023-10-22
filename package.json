@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "start": "node ./dist/bin/www"
+    "start": "npx tsc && node ./dist/bin/www"
   },
   "type": "module",
   "dependencies": {
