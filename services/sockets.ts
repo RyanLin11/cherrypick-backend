@@ -1,4 +1,4 @@
-import { ModifyResult } from "mongoose";
+import { ModifyResult, isValidObjectId } from "mongoose";
 import mongoose from "mongoose";
 import { Server, Socket } from "socket.io";
 import Election from '../models/election.js';
@@ -54,8 +54,13 @@ io.on('connection', async (socket: Socket) => {
     await user.save();
 
     socket.on('set-name', async ({ name }) => {
-        user.name = name;
-        await user.save();
+        try {
+            user.name = name;
+            await user.save();
+            socket.emit("set-name-success");
+        } catch (e) {
+            socket.emit("error", e);
+        }
     });
 
     socket.on('join-group', async ({ code }: JoinGroupRequest) => {
@@ -72,22 +77,18 @@ io.on('connection', async (socket: Socket) => {
     });
 
     socket.on('create-group', async ({ code }: CreateGroupRequest) => {
-        const update = {
-            $setOnInsert: {
-                admin: socket.id,
+        try {
+            let election = await Election.findOne({ code });
+            if (election) {
+                socket.emit("error", { message: "room code already in use" });
+            } else {
+                let options = ['option1', 'option2', 'option3', 'option4', 'option5', 'option6', 'option7', 'option8'];
+                election = new Election({ code, admin: user._id, options });
+                await election.save();
+                socket.emit("group-create-success", election);
             }
-        };
-        const options = {
-            rawResult: true,
-            upsert: true
-        };
-        const result: ModifyResult<any> | null = await Election.findByIdAndUpdate(code, update, options);
-        if (!result || result?.lastErrorObject?.updatedExisting) {
-            socket.emit("error", { message: "room code already in use" });
-        } else {
-            const election = result.value;
-            socket.join(election._id);
-            socket.emit("group-join-successful");
+        } catch (e) {
+            socket.emit("error", e);
         }
     });
 
@@ -104,21 +105,28 @@ io.on('connection', async (socket: Socket) => {
                 } else {
                     let vote = new Vote({ voter: user._id, option });
                     await vote.save();
-                    election = await Election.findByIdAndUpdate(
+                    await Election.findByIdAndUpdate(
                         election._id,
-                        { $push: { votes: vote._id }}
+                        { $push: { votes: vote._id }},
                     );
                 }
+                election = await Election.findById(electionId).populate<{ votes: Vote[] }>('votes');
                 if (getNumVoters(electionId) === election?.votes.length) {
-                    const winner = getWinner(election.votes);
-                    election.options.shift();
-                    election.options.shift();
-                    election.options.push(winner);
-                    await election.save();
-                    socket.emit('update', {
-                        id: election._id,
-                        options: election.options
-                    });
+                    if (election) {
+                        await Vote.deleteMany({ '_id': {
+                            $in: [election.votes.map(vote => vote._id)]
+                        }});
+                        const winner = getWinner(election.votes);
+                        election.options.shift();
+                        election.options.shift();
+                        election.options.push(winner);
+                        election.votes = [];
+                        await election.save();
+                        socket.emit('update', {
+                            id: election._id,
+                            options: election.options
+                        });
+                    }
                 }
             } else {
                 throw new Error(`Election ${electionId} does not exist`);
@@ -129,16 +137,28 @@ io.on('connection', async (socket: Socket) => {
     });
 
     socket.on('disconnecting', async () => {
-        await Promise.all([...socket.rooms].map(async (room) => {
-            const election = await Election.findOne({code: room});
-            if (election) {
-                // remove all votes related to this person
-                // delete election if that was the last person
-                if (getNumVoters(new mongoose.Types.ObjectId(room)) === 1) {
-                    await Election.findByIdAndDelete(election._id);
+        let rooms = [...socket.rooms];
+        let roomToSize = new Map<string, number>();
+        rooms.forEach(room => {
+            roomToSize.set(room, io.sockets.adapter.rooms.get(room)?.size ?? 0);
+        });
+        const votes = await Vote.find({ voter: user._id });
+        await Vote.deleteMany({ voter: user._id });
+        await Promise.all(rooms.map(async (room) => {
+            if (isValidObjectId(room)) {
+                const election = await Election.findById(room);
+                if (election) {
+                    // remove all votes related to this person
+                    election.votes = election.votes.filter(vote => !votes.find(v => v._id === vote));
+                    await election.save();
+                    // delete election if that was the last person
+                    if (roomToSize.get(room) === 1) {
+                        await Election.findByIdAndDelete(election._id);
+                    }
                 }
             }
         }));
+        await User.findByIdAndDelete(user._id);
     });
 });
 

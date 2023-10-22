@@ -7,7 +7,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
         step((generator = generator.apply(thisArg, _arguments || [])).next());
     });
 };
-import mongoose from "mongoose";
+import { isValidObjectId } from "mongoose";
 import { Server } from "socket.io";
 import Election from '../models/election.js';
 import Vote from '../models/vote.js';
@@ -35,8 +35,14 @@ io.on('connection', (socket) => __awaiter(void 0, void 0, void 0, function* () {
     let user = new User({ sid: socket.id });
     yield user.save();
     socket.on('set-name', ({ name }) => __awaiter(void 0, void 0, void 0, function* () {
-        user.name = name;
-        yield user.save();
+        try {
+            user.name = name;
+            yield user.save();
+            socket.emit("set-name-success");
+        }
+        catch (e) {
+            socket.emit("error", e);
+        }
     }));
     socket.on('join-group', ({ code }) => __awaiter(void 0, void 0, void 0, function* () {
         let election = yield Election.findOne({ code });
@@ -52,24 +58,20 @@ io.on('connection', (socket) => __awaiter(void 0, void 0, void 0, function* () {
         }
     }));
     socket.on('create-group', ({ code }) => __awaiter(void 0, void 0, void 0, function* () {
-        var _a;
-        const update = {
-            $setOnInsert: {
-                admin: socket.id,
+        try {
+            let election = yield Election.findOne({ code });
+            if (election) {
+                socket.emit("error", { message: "room code already in use" });
             }
-        };
-        const options = {
-            rawResult: true,
-            upsert: true
-        };
-        const result = yield Election.findByIdAndUpdate(code, update, options);
-        if (!result || ((_a = result === null || result === void 0 ? void 0 : result.lastErrorObject) === null || _a === void 0 ? void 0 : _a.updatedExisting)) {
-            socket.emit("error", { message: "room code already in use" });
+            else {
+                let options = ['option1', 'option2', 'option3', 'option4', 'option5', 'option6', 'option7', 'option8'];
+                election = new Election({ code, admin: user._id, options });
+                yield election.save();
+                socket.emit("group-create-success", election);
+            }
         }
-        else {
-            const election = result.value;
-            socket.join(election._id);
-            socket.emit("group-join-successful");
+        catch (e) {
+            socket.emit("error", e);
         }
     }));
     socket.on('vote', ({ electionId, option }) => __awaiter(void 0, void 0, void 0, function* () {
@@ -83,18 +85,25 @@ io.on('connection', (socket) => __awaiter(void 0, void 0, void 0, function* () {
                 else {
                     let vote = new Vote({ voter: user._id, option });
                     yield vote.save();
-                    election = yield Election.findByIdAndUpdate(election._id, { $push: { votes: vote._id } });
+                    yield Election.findByIdAndUpdate(election._id, { $push: { votes: vote._id } });
                 }
+                election = yield Election.findById(electionId).populate('votes');
                 if (getNumVoters(electionId) === (election === null || election === void 0 ? void 0 : election.votes.length)) {
-                    const winner = getWinner(election.votes);
-                    election.options.shift();
-                    election.options.shift();
-                    election.options.push(winner);
-                    yield election.save();
-                    socket.emit('update', {
-                        id: election._id,
-                        options: election.options
-                    });
+                    if (election) {
+                        yield Vote.deleteMany({ '_id': {
+                                $in: [election.votes.map(vote => vote._id)]
+                            } });
+                        const winner = getWinner(election.votes);
+                        election.options.shift();
+                        election.options.shift();
+                        election.options.push(winner);
+                        election.votes = [];
+                        yield election.save();
+                        socket.emit('update', {
+                            id: election._id,
+                            options: election.options
+                        });
+                    }
                 }
             }
             else {
@@ -106,13 +115,30 @@ io.on('connection', (socket) => __awaiter(void 0, void 0, void 0, function* () {
         }
     }));
     socket.on('disconnecting', () => __awaiter(void 0, void 0, void 0, function* () {
-        yield Promise.all([...socket.rooms].map((room) => __awaiter(void 0, void 0, void 0, function* () {
-            const election = yield Election.findOne({ code: room });
-            if (election) {
-                // remove all votes related to this person
-                // delete election if that was the last person
-                if (getNumVoters(new mongoose.Types.ObjectId(room)) === 1) {
-                    yield Election.findByIdAndDelete(election._id);
+        let rooms = [...socket.rooms];
+        let roomToSize = new Map();
+        rooms.forEach(room => {
+            var _a, _b;
+            roomToSize.set(room, (_b = (_a = io.sockets.adapter.rooms.get(room)) === null || _a === void 0 ? void 0 : _a.size) !== null && _b !== void 0 ? _b : 0);
+        });
+        const votes = yield Vote.find({ voter: user._id });
+        yield Vote.deleteMany({ voter: user._id });
+        console.log([...socket.rooms]);
+        yield Promise.all(rooms.map((room) => __awaiter(void 0, void 0, void 0, function* () {
+            if (isValidObjectId(room)) {
+                const election = yield Election.findById(room);
+                console.log(election);
+                if (election) {
+                    // remove all votes related to this person
+                    election.votes = election.votes.filter(vote => !votes.find(v => v._id === vote));
+                    yield election.save();
+                    // delete election if that was the last person
+                    console.log('id: ' + election._id);
+                    console.log('room: ' + room);
+                    console.log(roomToSize.get(room));
+                    if (roomToSize.get(room) === 1) {
+                        yield Election.findByIdAndDelete(election._id);
+                    }
                 }
             }
         })));

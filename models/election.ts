@@ -22,6 +22,7 @@ const ElectionSchema = new mongoose.Schema({
     },
     votes: {
         type: [ObjectId],
+        default: [],
         ref: Vote,
         required: true,
     },
