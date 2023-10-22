@@ -1,13 +1,12 @@
-const mongoose = require('mongoose');
-const { ObjectId } = mongoose.Types;
+import mongoose from 'mongoose';
+import User from './user';
+
+const { ObjectId } = mongoose.Schema.Types;
 
 const VoteSchema = new mongoose.Schema({
     voter: {
-        type: String,
-        required: true
-    },
-    election: {
         type: ObjectId,
+        ref: User,
         required: true
     },
     option: {
@@ -18,4 +17,4 @@ const VoteSchema = new mongoose.Schema({
 
 const Vote = mongoose.model("Vote", VoteSchema);
 
-module.exports = Vote;
+export default Vote;
